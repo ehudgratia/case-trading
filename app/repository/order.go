@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) CreateOrder(ctx context.Context, userID int, input models.OrderRequest) (*models.Order, error) {
+func (s *Service) CreateOrder(ctx context.Context, userID int, input models.OrderRequest) (*models.OrderResponse, error) {
 	// ===== VALIDASI DASAR =====
 	if input.MarketID == 0 {
 		return nil, fmt.Errorf("market_id is required")
@@ -111,5 +111,16 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	return &order, nil
+	resp := &models.OrderResponse{
+		ID:        order.ID,
+		UserID:    order.UserID,
+		MarketID:  order.MarketID,
+		Side:      order.Side,
+		Price:     order.Price,
+		Quantity:  order.Quantity,
+		Status:    order.Status,
+		CreatedAt: order.CreatedAt,
+	}
+
+	return resp, nil
 }

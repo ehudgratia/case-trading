@@ -30,3 +30,14 @@ type OrderRequest struct {
 	Price    float64 `json:"price"`
 	Quantity float64 `json:"quantity"`
 }
+
+type OrderResponse struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	MarketID  int       `json:"market_id"`
+	Side      SideType  `json:"side"`
+	Price     float64   `json:"price"`
+	Quantity  float64   `json:"quantity"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
