@@ -28,5 +28,8 @@ func SetupRouters(api fiber.Router) {
 
 		// admin (manual)
 		auth.Post("/market", controllers.AddMarket)
+
+		// order
+		auth.Post("/order", controllers.CreateOrder)
 	}
 }

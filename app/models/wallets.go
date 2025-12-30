@@ -39,12 +39,3 @@ type WalletResponse struct {
 	Message string       `json:"message"`
 	Data    *WalletsData `json:"data"`
 }
-
-// type WalletTransaction struct {
-// 	ID        int             `json:"id" gorm:"primaryKey"`
-// 	WalletID  int             `json:"wallet_id" gorm:"not null;index"`
-// 	Type      string          `json:"type" gorm:"size:20;not null"` // Type: "TOPUP", "WITHDRAW", "BUY_STOCK", "SELL_STOCK"
-// 	Amount    decimal.Decimal `json:"amount" gorm:"type:decimal(15,2);not null"`
-// 	Status    string          `json:"status" gorm:"size:20;default:'PENDING'"` // Status: "PENDING", "SUCCESS", "FAILED"
-// 	CreatedAt time.Time       `json:"created_at"`
-// }
