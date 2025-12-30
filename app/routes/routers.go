@@ -2,6 +2,7 @@ package routes
 
 import (
 	"case-trading/app/controllers"
+	"case-trading/app/middlewares"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -16,8 +17,8 @@ func SetupRouters(api fiber.Router) {
 		public.Post("/login", controllers.UserLogin)
 	}
 
-	// 	auth := api.Group("/auth", middlewares.AuthMiddleware())
-	// 	{
-
-	// 	}
+	auth := api.Group("/auth", middlewares.AuthMiddleware())
+	{
+		auth.Post("/wallet", controllers.AddWallet)
+	}
 }

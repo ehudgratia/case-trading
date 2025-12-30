@@ -1,0 +1,50 @@
+package controllers
+
+import (
+	"case-trading/app/models"
+	"case-trading/app/repository"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+func AddWallet(ctx *fiber.Ctx) error {
+	var input models.AddWallet
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+	User_ID := ctx.Locals("id").(int)
+	s := repository.GetTransaction()
+	defer func() {
+		if r := recover(); r != nil {
+			err := s.Rollback(r)
+			ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"success": false,
+				"message": err.Error(),
+			})
+		}
+	}()
+
+	wallet, err := s.AddWallet(ctx.Context(), User_ID, input)
+	if err != nil {
+		s.Rollback(err)
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+	if err := s.Commit(); err != nil {
+		s.Rollback(err)
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"success": true,
+		"message": "Article created successfully",
+		"data":    wallet,
+	})
+}

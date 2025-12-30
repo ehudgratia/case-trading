@@ -55,6 +55,7 @@ func SyncDB() {
 	err := db.AutoMigrate(
 		&models.Users{},
 		&models.VerifyToken{},
+		&models.Wallets{},
 	)
 	if err != nil {
 		panic(err)
