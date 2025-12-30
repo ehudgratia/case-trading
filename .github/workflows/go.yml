@@ -43,6 +43,6 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd ./golang-api-v1
+            cd ./case-trading
             docker compose pull
             docker compose up -d --force-recreate
