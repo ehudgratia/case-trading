@@ -20,6 +20,11 @@ type AddWallet struct {
 	Amount float64 `json:"amount"`
 }
 
+type TopUpWallet struct {
+	Asset  string  `json:"asset"`
+	Amount float64 `json:"amount"`
+}
+
 type WalletsData struct {
 	ID       int     `json:"id"`
 	Username string  `json:"username"`

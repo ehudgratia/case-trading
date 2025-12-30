@@ -20,5 +20,6 @@ func SetupRouters(api fiber.Router) {
 	auth := api.Group("/auth", middlewares.AuthMiddleware())
 	{
 		auth.Post("/wallet", controllers.AddWallet)
+		auth.Post("/topup", controllers.TopUpWallet)
 	}
 }
