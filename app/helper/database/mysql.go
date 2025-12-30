@@ -56,6 +56,7 @@ func SyncDB() {
 		&models.Users{},
 		&models.VerifyToken{},
 		&models.Wallets{},
+		&models.Market{},
 	)
 	if err != nil {
 		panic(err)
