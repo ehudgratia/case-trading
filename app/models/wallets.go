@@ -34,7 +34,7 @@ type WalletsData struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type ArticleResponse struct {
+type WalletResponse struct {
 	Success bool         `json:"success"`
 	Message string       `json:"message"`
 	Data    *WalletsData `json:"data"`

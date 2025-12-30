@@ -15,11 +15,18 @@ func SetupRouters(api fiber.Router) {
 
 		// login
 		public.Post("/login", controllers.UserLogin)
+
+		// get market
+		public.Get("/", controllers.GetMarkets)
 	}
 
 	auth := api.Group("/auth", middlewares.AuthMiddleware())
 	{
+		// user
 		auth.Post("/wallet", controllers.AddWallet)
 		auth.Post("/topup", controllers.TopUpWallet)
+
+		// admin (manual)
+		auth.Post("/market", controllers.AddMarket)
 	}
 }
