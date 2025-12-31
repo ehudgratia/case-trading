@@ -103,6 +103,12 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
+	// ================= MATCHING =================
+	if err := s.MatchOrder(tx, &order); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
 	// ================= COMMIT =================
 	if err := tx.Commit().Error; err != nil {
 		return nil, err
@@ -121,4 +127,57 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 	}
 
 	return resp, nil
+}
+
+func (s *Service) MatchOrder(tx *gorm.DB, newOrder *models.Order) error {
+	var opposite models.Order
+
+	query := tx.
+		Where("market_id = ?", newOrder.MarketID).
+		Where("status = ?", models.OrderStatusOpen).
+		Where("id != ?", newOrder.ID)
+
+	if newOrder.Side == models.SideBuy {
+		query = query.
+			Where("side = ?", models.SideSell).
+			Where("price <= ?", newOrder.Price).
+			Order("price ASC, created_at ASC")
+	} else {
+		query = query.
+			Where("side = ?", models.SideBuy).
+			Where("price >= ?", newOrder.Price).
+			Order("price DESC, created_at ASC")
+	}
+
+	if err := query.First(&opposite).Error; err != nil {
+		// tidak ada match → NORMAL
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+
+	// ================= HITUNG MATCH QTY =================
+	matchQty := newOrder.Quantity
+	if opposite.Quantity < matchQty {
+		matchQty = opposite.Quantity
+	}
+
+	// ================= UPDATE ORDER BARU =================
+	if err := tx.Model(newOrder).Updates(map[string]interface{}{
+		"filled_qty": matchQty,
+		"status":     models.OrderStatusFilled,
+	}).Error; err != nil {
+		return err
+	}
+
+	// ================= UPDATE ORDER LAWAN =================
+	if err := tx.Model(&opposite).Updates(map[string]interface{}{
+		"filled_qty": matchQty,
+		"status":     models.OrderStatusFilled,
+	}).Error; err != nil {
+		return err
+	}
+
+	return nil
 }
