@@ -9,7 +9,7 @@ type Wallets struct {
 	UserID    int     `json:"user_id" gorm:"not null;index"`
 	Asset     string  `json:"asset" gorm:"not null"`
 	Available float64 `json:"available" gorm:"type:decimal(20,2); default:0"`
-	Locked    float64 `json:"locked" gorm:"type:decimal(20,8); not null; default:0"`
+	Locked    float64 `json:"locked" gorm:"type:decimal(20,2); not null; default:0"`
 
 	CreatedAt time.Time  `json:"created_at" gorm:"not null"`
 	UpdatedAt *time.Time `json:"updated_at"`
