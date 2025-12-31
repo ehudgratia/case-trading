@@ -37,9 +37,11 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 
 	// ===== CEK MARKET =====
 	var market models.Market
-	if err := tx.Where("id = ? AND is_active = ?", input.MarketID, true).
+	if err := tx.
+		Where("id = ? AND is_active = ?", input.MarketID, true).
 		First(&market).Error; err != nil {
 
+		tx.Rollback()
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("market not found")
 		}
