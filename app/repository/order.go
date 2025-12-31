@@ -129,51 +129,59 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 	return resp, nil
 }
 
-func (s *Service) MatchOrder(tx *gorm.DB, newOrder *models.Order) error {
-	var opposite models.Order
+func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order) error {
+	var counter models.Order
 
-	query := tx.
-		Where("market_id = ?", newOrder.MarketID).
-		Where("status = ?", models.OrderStatusOpen).
-		Where("id != ?", newOrder.ID)
+	if order.Side == models.SideBuy {
+		// cari SELL terlama dengan harga <= buy price
+		err := tx.
+			Where("market_id = ? AND side = ? AND status = ? AND price <= ?",
+				order.MarketID,
+				models.SideSell,
+				models.OrderStatusOpen,
+				order.Price,
+			).
+			Order("created_at ASC").
+			First(&counter).Error
 
-	if newOrder.Side == models.SideBuy {
-		query = query.
-			Where("side = ?", models.SideSell).
-			Where("price <= ?", newOrder.Price).
-			Order("price ASC, created_at ASC")
-	} else {
-		query = query.
-			Where("side = ?", models.SideBuy).
-			Where("price >= ?", newOrder.Price).
-			Order("price DESC, created_at ASC")
-	}
-
-	if err := query.First(&opposite).Error; err != nil {
-		// tidak ada match → NORMAL
-		if err == gorm.ErrRecordNotFound {
-			return nil
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil // tidak ada match
+			}
+			return err
 		}
-		return err
+
+	} else {
+		// cari BUY terlama dengan harga >= sell price
+		err := tx.
+			Where("market_id = ? AND side = ? AND status = ? AND price >= ?",
+				order.MarketID,
+				models.SideBuy,
+				models.OrderStatusOpen,
+				order.Price,
+			).
+			Order("created_at ASC").
+			First(&counter).Error
+
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil
+			}
+			return err
+		}
 	}
 
-	// ================= HITUNG MATCH QTY =================
-	matchQty := newOrder.Quantity
-	if opposite.Quantity < matchQty {
-		matchQty = opposite.Quantity
-	}
+	// ================= UPDATE KEDUA ORDER =================
 
-	// ================= UPDATE ORDER BARU =================
-	if err := tx.Model(newOrder).Updates(map[string]interface{}{
-		"filled_qty": matchQty,
+	if err := tx.Model(&order).Updates(map[string]interface{}{
+		"filled_qty": order.Quantity,
 		"status":     models.OrderStatusFilled,
 	}).Error; err != nil {
 		return err
 	}
 
-	// ================= UPDATE ORDER LAWAN =================
-	if err := tx.Model(&opposite).Updates(map[string]interface{}{
-		"filled_qty": matchQty,
+	if err := tx.Model(&counter).Updates(map[string]interface{}{
+		"filled_qty": counter.Quantity,
 		"status":     models.OrderStatusFilled,
 	}).Error; err != nil {
 		return err
