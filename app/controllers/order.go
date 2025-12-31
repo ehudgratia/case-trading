@@ -10,14 +10,14 @@ import (
 func CreateOrder(ctx *fiber.Ctx) error {
 	var input models.OrderRequest
 	if err := ctx.BodyParser(&input); err != nil {
-		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+		return ctx.Status(400).JSON(fiber.Map{
 			"success": false,
 			"message": err.Error(),
 		})
 	}
 
 	userID := ctx.Locals("id").(int)
-	s := repository.GetTransaction()
+	s := repository.GetService()
 
 	defer func() {
 		if r := recover(); r != nil {
