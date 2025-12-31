@@ -8,7 +8,7 @@ import (
 )
 
 func AddWallet(ctx *fiber.Ctx) error {
-	var input models.AddWallet
+	var input models.CreateWallet
 	if err := ctx.BodyParser(&input); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
@@ -27,7 +27,7 @@ func AddWallet(ctx *fiber.Ctx) error {
 		}
 	}()
 
-	wallet, err := s.AddWallet(ctx.Context(), User_ID, input)
+	wallet, err := s.CreateWallet(ctx.Context(), User_ID, input)
 	if err != nil {
 		s.Rollback(err)
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

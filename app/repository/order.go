@@ -24,6 +24,17 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, fmt.Errorf("invalid side")
 	}
 
+	// ================= TRANSACTION =================
+	tx := s.DB.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
 	// ===== CEK MARKET =====
 	var market models.Market
 	if err := s.DB.WithContext(ctx).
@@ -36,81 +47,67 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	// ===== CEK WALLET =====
-	var asset string
+	// ================= TENTUKAN ASSET & JUMLAH LOCK =================
+	var lockAsset string
+	var lockAmount float64
+
 	if side == string(models.SideBuy) {
-		asset = market.QuoteAsset
+		lockAsset = market.QuoteAsset
+		lockAmount = input.Price * input.Quantity
 	} else {
-		asset = market.BaseAsset
+		lockAsset = market.BaseAsset
+		lockAmount = input.Quantity
 	}
 
+	// ================= AMBIL WALLET =================
 	var wallet models.Wallets
-	if err := s.DB.WithContext(ctx).
-		Where("user_id = ? AND asset = ?", userID, asset).
+	if err := tx.
+		Where("user_id = ? AND asset = ?", userID, lockAsset).
 		First(&wallet).Error; err != nil {
-		return nil, fmt.Errorf("wallet %s not found", asset)
+
+		tx.Rollback()
+		return nil, fmt.Errorf("wallet %s not found", lockAsset)
 	}
 
-	// ===== CEK SALDO =====
-	var cost float64
-	if side == string(models.SideBuy) {
-		cost = input.Price * input.Quantity
-	} else {
-		cost = input.Quantity
+	// ================= CEK SALDO AVAILABLE =================
+	if wallet.Available < lockAmount {
+		tx.Rollback()
+		return nil, fmt.Errorf("insufficient available balance")
 	}
 
-	if wallet.Amount < cost {
-		return nil, fmt.Errorf("insufficient balance")
-	}
+	// ================= LOCK SALDO =================
+	if err := tx.Model(&wallet).Updates(map[string]interface{}{
+		"available": wallet.Available - lockAmount,
+		"locked":    wallet.Locked + lockAmount,
+	}).Error; err != nil {
 
-	// ===== UPDATE SALDO =====
-	if err := s.DB.WithContext(ctx).
-		Model(&wallet).
-		Update("amount", wallet.Amount-cost).Error; err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
-	// ===== TAMBAH SALDO DIBELI =====
-	var targetAsset string
-	if side == string(models.SideBuy) {
-		targetAsset = market.BaseAsset
-	} else {
-		targetAsset = market.QuoteAsset
-	}
-
-	var targetWallet models.Wallets
-	if err := s.DB.WithContext(ctx).
-		Where("user_id = ? AND asset = ?", userID, targetAsset).
-		First(&targetWallet).Error; err != nil {
-		return nil, fmt.Errorf("wallet %s not found", targetAsset)
-	}
-
-	addAmount := input.Quantity
-	if side == string(models.SideSell) {
-		addAmount = input.Price * input.Quantity
-	}
-
-	if err := s.DB.WithContext(ctx).
-		Model(&targetWallet).
-		Update("amount", targetWallet.Amount+addAmount).Error; err != nil {
-		return nil, err
-	}
-
-	// ===== SIMPAN ORDER =====
+	// ================= SIMPAN ORDER =================
 	order := models.Order{
 		UserID:    userID,
 		MarketID:  input.MarketID,
 		Side:      models.SideType(side),
 		Price:     input.Price,
 		Quantity:  input.Quantity,
-		Status:    "DONE",
+		FilledQty: 0,
+		Status:    models.OrderStatusOpen,
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := s.DB.WithContext(ctx).Create(&order).Error; err != nil {
+	if err := tx.Create(&order).Error; err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
+	// ================= COMMIT =================
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+
+	// ================= RESPONSE =================
 	resp := &models.OrderResponse{
 		ID:        order.ID,
 		UserID:    order.UserID,

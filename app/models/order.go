@@ -7,6 +7,11 @@ type SideType string
 const (
 	SideBuy  SideType = "BUY"
 	SideSell SideType = "SELL"
+
+	OrderStatusOpen     = "OPEN"
+	OrderStatusPartial  = "PARTIAL"
+	OrderStatusFilled   = "FILLED"
+	OrderStatusCanceled = "CANCELED"
 )
 
 type Order struct {
@@ -16,6 +21,7 @@ type Order struct {
 	Side      SideType  `json:"side" gorm:"type:varchar(4); not null"`
 	Price     float64   `json:"price" gorm:"not null"`
 	Quantity  float64   `json:"quantity" gorm:"not null"`
+	FilledQty float64   `json:"filled_qty" gorm:"not null;default:0"`
 	Status    string    `json:"status" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at" gorm:"not null"`
 	UpdatedAt time.Time `json:"updated_at"`

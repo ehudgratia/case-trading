@@ -5,17 +5,19 @@ import (
 )
 
 type Wallets struct {
-	ID        int        `json:"id" gorm:"primaryKey"`
-	UserID    int        `json:"user_id" gorm:"not null;index"`
-	Asset     string     `json:"asset" gorm:"not null"`
-	Amount    float64    `json:"amount" gorm:"type:decimal(15,2); default:0"`
+	ID        int     `json:"id" gorm:"primaryKey"`
+	UserID    int     `json:"user_id" gorm:"not null;index"`
+	Asset     string  `json:"asset" gorm:"not null"`
+	Available float64 `json:"available" gorm:"type:decimal(20,2); default:0"`
+	Locked    float64 `json:"locked" gorm:"type:decimal(20,8); not null; default:0"`
+
 	CreatedAt time.Time  `json:"created_at" gorm:"not null"`
 	UpdatedAt *time.Time `json:"updated_at"`
 
 	User Users `gorm:"foreignKey:UserID;references:ID"`
 }
 
-type AddWallet struct {
+type CreateWallet struct {
 	Asset  string  `json:"asset"`
 	Amount float64 `json:"amount"`
 }
@@ -26,11 +28,12 @@ type TopUpWallet struct {
 }
 
 type WalletsData struct {
-	ID       int     `json:"id"`
-	Username string  `json:"username"`
-	Asset    string  `json:"asset"`
-	Amount   float64 `json:"amount"`
-
+	ID        int       `json:"id"`
+	Username  string    `json:"username"`
+	Asset     string    `json:"asset"`
+	Available float64   `json:"available"`
+	Locked    float64   `json:"locked"`
+	Total     float64   `json:"total"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

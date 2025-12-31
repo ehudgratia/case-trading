@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s Service) AddWallet(ctx context.Context, IDUser int, input models.AddWallet) (*models.WalletsData, error) {
+func (s Service) CreateWallet(ctx context.Context, IDUser int, input models.CreateWallet) (*models.WalletsData, error) {
 	if strings.TrimSpace(input.Asset) == "" {
 		return nil, fmt.Errorf("asset is required")
 	}
@@ -31,7 +31,8 @@ func (s Service) AddWallet(ctx context.Context, IDUser int, input models.AddWall
 	wallets := models.Wallets{
 		UserID:    IDUser,
 		Asset:     asset,
-		Amount:    0,
+		Available: 0,
+		Locked:    0,
 		CreatedAt: time.Now().UTC(),
 	}
 
@@ -47,10 +48,13 @@ func (s Service) AddWallet(ctx context.Context, IDUser int, input models.AddWall
 	}
 
 	resp := &models.WalletsData{
-		ID:       wallets.ID,
-		Username: user.Username,
-		Asset:    wallets.Asset,
-		Amount:   wallets.Amount,
+		ID:        wallets.ID,
+		Username:  user.Username,
+		Asset:     wallets.Asset,
+		Available: wallet.Available,
+		Locked:    wallet.Locked,
+		Total:     wallet.Available + wallet.Locked,
+		CreatedAt: wallet.CreatedAt,
 	}
 	return resp, nil
 }
@@ -79,11 +83,11 @@ func (s Service) TopUpWallet(ctx context.Context, userID int, input models.TopUp
 	}
 
 	// update saldo
-	newAmount := wallet.Amount + input.Amount
+	newAvailable := wallet.Available + input.Amount
 
 	if err := s.DB.WithContext(ctx).
 		Model(&wallet).
-		Update("amount", newAmount).Error; err != nil {
+		Update("available", newAvailable).Error; err != nil {
 		return nil, err
 	}
 
@@ -96,10 +100,13 @@ func (s Service) TopUpWallet(ctx context.Context, userID int, input models.TopUp
 	}
 
 	resp := &models.WalletsData{
-		ID:       wallet.ID,
-		Username: user.Username,
-		Asset:    wallet.Asset,
-		Amount:   newAmount,
+		ID:        wallet.ID,
+		Username:  user.Username,
+		Asset:     wallet.Asset,
+		Available: newAvailable,
+		Locked:    wallet.Locked,
+		Total:     newAvailable + wallet.Locked,
+		CreatedAt: wallet.CreatedAt,
 	}
 
 	return resp, nil
