@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Service) CreateOrder(ctx context.Context, userID int, input models.OrderRequest) (*models.OrderResponse, error) {
-	// ===== VALIDASI DASAR =====
+	// validasi
 	if input.MarketID == 0 {
 		return nil, fmt.Errorf("market_id is required")
 	}
@@ -24,7 +24,7 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, fmt.Errorf("invalid side")
 	}
 
-	// ================= TRANSACTION =================
+	// transaksi
 	tx := s.DB.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -35,7 +35,7 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		}
 	}()
 
-	// ===== CEK MARKET =====
+	// cek market
 	var market models.Market
 	if err := tx.
 		Where("id = ? AND is_active = ?", input.MarketID, true).
@@ -48,7 +48,7 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	// ================= TENTUKAN ASSET & JUMLAH LOCK =================
+	// nentukan asset dan lock
 	var lockAsset string
 	var lockAmount float64
 
@@ -60,7 +60,7 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		lockAmount = input.Quantity
 	}
 
-	// ================= AMBIL WALLET =================
+	// ambil wallet
 	var wallet models.Wallets
 	if err := tx.
 		Where("user_id = ? AND asset = ?", userID, lockAsset).
@@ -70,13 +70,13 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, fmt.Errorf("wallet %s not found", lockAsset)
 	}
 
-	// ================= CEK SALDO AVAILABLE =================
+	// cek saldo available
 	if wallet.Available < lockAmount {
 		tx.Rollback()
 		return nil, fmt.Errorf("insufficient available balance")
 	}
 
-	// ================= LOCK SALDO =================
+	// lock saldo
 	if err := tx.Model(&wallet).Updates(map[string]interface{}{
 		"available": wallet.Available - lockAmount,
 		"locked":    wallet.Locked + lockAmount,
@@ -86,7 +86,7 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	// ================= SIMPAN ORDER =================
+	// save order
 	order := models.Order{
 		UserID:    userID,
 		MarketID:  input.MarketID,
@@ -103,18 +103,18 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	// ================= MATCHING =================
-	if err := s.MatchOrder(tx, &order); err != nil {
+	// matching
+	if err := s.MatchOrder(tx, &order, market); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	// ================= COMMIT =================
+	// commit
 	if err := tx.Commit().Error; err != nil {
 		return nil, err
 	}
 
-	// ================= RESPONSE =================
+	// respon
 	resp := &models.OrderResponse{
 		ID:        order.ID,
 		UserID:    order.UserID,
@@ -129,11 +129,11 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 	return resp, nil
 }
 
-func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order) error {
+func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Market) error {
 	var counter models.Order
 
 	if order.Side == models.SideBuy {
-		// cari SELL terlama dengan harga <= buy price
+		// last sell
 		err := tx.
 			Where("market_id = ? AND side = ? AND status = ? AND price <= ?",
 				order.MarketID,
@@ -152,7 +152,7 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order) error {
 		}
 
 	} else {
-		// cari BUY terlama dengan harga >= sell price
+		// last buy
 		err := tx.
 			Where("market_id = ? AND side = ? AND status = ? AND price >= ?",
 				order.MarketID,
@@ -171,21 +171,69 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order) error {
 		}
 	}
 
-	// ================= UPDATE KEDUA ORDER =================
+	// ================= FULL MATCH (PHASE 2) =================
+	matchQty := order.Quantity
+	tradePrice := counter.Price
 
-	if err := tx.Model(&order).Updates(map[string]interface{}{
-		"filled_qty": order.Quantity,
+	// update incoming order
+	if err := tx.Model(order).Updates(map[string]interface{}{
+		"filled_qty": matchQty,
 		"status":     models.OrderStatusFilled,
 	}).Error; err != nil {
 		return err
 	}
 
+	// update counter order
 	if err := tx.Model(&counter).Updates(map[string]interface{}{
-		"filled_qty": counter.Quantity,
+		"filled_qty": matchQty,
 		"status":     models.OrderStatusFilled,
 	}).Error; err != nil {
 		return err
 	}
+
+	// ================= SETTLEMENT =================
+	if order.Side == models.SideBuy {
+		// BUY (order) vs SELL (counter)
+		if err := s.settleTrade(tx, *order, counter, tradePrice, matchQty, market); err != nil {
+			return err
+		}
+	} else {
+		// SELL (order) vs BUY (counter)
+		if err := s.settleTrade(tx, counter, *order, tradePrice, matchQty, market); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder models.Order, price float64, qty float64, market models.Market) error {
+
+	quoteAmount := price * qty
+
+	// ===== BUYER =====
+	var buyerQuote, buyerBase models.Wallets
+	tx.Where("user_id = ? AND asset = ?", buyOrder.UserID, market.QuoteAsset).First(&buyerQuote)
+	tx.Where("user_id = ? AND asset = ?", buyOrder.UserID, market.BaseAsset).First(&buyerBase)
+
+	tx.Model(&buyerQuote).Updates(map[string]interface{}{
+		"locked": buyerQuote.Locked - quoteAmount,
+	})
+	tx.Model(&buyerBase).Updates(map[string]interface{}{
+		"available": buyerBase.Available + qty,
+	})
+
+	// ===== SELLER =====
+	var sellerBase, sellerQuote models.Wallets
+	tx.Where("user_id = ? AND asset = ?", sellOrder.UserID, market.BaseAsset).First(&sellerBase)
+	tx.Where("user_id = ? AND asset = ?", sellOrder.UserID, market.QuoteAsset).First(&sellerQuote)
+
+	tx.Model(&sellerBase).Updates(map[string]interface{}{
+		"locked": sellerBase.Locked - qty,
+	})
+	tx.Model(&sellerQuote).Updates(map[string]interface{}{
+		"available": sellerQuote.Available + quoteAmount,
+	})
 
 	return nil
 }
