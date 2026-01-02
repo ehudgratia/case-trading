@@ -11,20 +11,12 @@ import (
 )
 
 func (s *Service) CreateOrder(ctx context.Context, userID int, input models.OrderRequest) (*models.OrderResponse, error) {
-	// validasi
-	if input.MarketID == 0 {
-		return nil, fmt.Errorf("market_id is required")
-	}
-	if input.Price <= 0 || input.Quantity <= 0 {
-		return nil, fmt.Errorf("price and quantity must be greater than zero")
+
+	side, err := validateOrderInput(input)
+	if err != nil {
+		return nil, err
 	}
 
-	side := strings.ToUpper(strings.TrimSpace(input.Side))
-	if side != string(models.SideBuy) && side != string(models.SideSell) {
-		return nil, fmt.Errorf("invalid side")
-	}
-
-	// transaksi
 	tx := s.DB.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -35,87 +27,33 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		}
 	}()
 
-	// cek market
-	var market models.Market
-	if err := tx.
-		Where("id = ? AND is_active = ?", input.MarketID, true).
-		First(&market).Error; err != nil {
-
-		tx.Rollback()
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("market not found")
-		}
-		return nil, err
-	}
-
-	// nentukan asset dan lock
-	var lockAsset string
-	var lockAmount float64
-
-	if side == string(models.SideBuy) {
-		lockAsset = market.QuoteAsset
-		lockAmount = input.Price * input.Quantity
-	} else {
-		lockAsset = market.BaseAsset
-		lockAmount = input.Quantity
-	}
-
-	// ambil wallet
-	var wallet models.Wallets
-	if err := tx.
-		Where("user_id = ? AND asset = ?", userID, lockAsset).
-		First(&wallet).Error; err != nil {
-
-		tx.Rollback()
-		return nil, fmt.Errorf("wallet %s not found", lockAsset)
-	}
-
-	// cek saldo available
-	if wallet.Available < lockAmount {
-		tx.Rollback()
-		return nil, fmt.Errorf("insufficient available balance")
-	}
-
-	// lock saldo
-	if err := tx.Model(&wallet).Updates(map[string]interface{}{
-		"available": wallet.Available - lockAmount,
-		"locked":    wallet.Locked + lockAmount,
-	}).Error; err != nil {
-
+	market, err := getActiveMarket(tx, input.MarketID)
+	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	// save order
-	order := models.Order{
-		UserID:    userID,
-		MarketID:  input.MarketID,
-		Side:      models.SideType(side),
-		Price:     input.Price,
-		Quantity:  input.Quantity,
-		FilledQty: 0,
-		Status:    models.OrderStatusOpen,
-		CreatedAt: time.Now().UTC(),
-	}
-
-	if err := tx.Create(&order).Error; err != nil {
+	if err := lockWalletForOrder(tx, userID, side, market, input.Price, input.Quantity); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	// matching
-	if err := s.MatchOrder(tx, &order, market); err != nil {
+	order, err := createOrderEntity(tx, userID, input, side)
+	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	// commit
+	if err := s.MatchOrder(tx, order, market); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return nil, err
 	}
 
-	// respon
-	resp := &models.OrderResponse{
+	return &models.OrderResponse{
 		ID:        order.ID,
 		UserID:    order.UserID,
 		MarketID:  order.MarketID,
@@ -124,9 +62,95 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		Quantity:  order.Quantity,
 		Status:    order.Status,
 		CreatedAt: order.CreatedAt,
+	}, nil
+}
+
+func validateOrderInput(input models.OrderRequest) (models.SideType, error) {
+	if input.MarketID == 0 {
+		return "", fmt.Errorf("market_id is required")
+	}
+	if input.Price <= 0 || input.Quantity <= 0 {
+		return "", fmt.Errorf("price and quantity must be greater than zero")
 	}
 
-	return resp, nil
+	side := strings.ToUpper(strings.TrimSpace(input.Side))
+	if side != string(models.SideBuy) && side != string(models.SideSell) {
+		return "", fmt.Errorf("invalid side")
+	}
+
+	return models.SideType(side), nil
+}
+
+func getActiveMarket(tx *gorm.DB, marketID int) (models.Market, error) {
+	var market models.Market
+	err := tx.
+		Where("id = ? AND is_active = ?", marketID, true).
+		First(&market).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return market, fmt.Errorf("market not found")
+		}
+		return market, err
+	}
+
+	return market, nil
+}
+
+func lockWalletForOrder(
+	tx *gorm.DB,
+	userID int,
+	side models.SideType,
+	market models.Market,
+	price, qty float64,
+) error {
+
+	var asset string
+	var amount float64
+
+	if side == models.SideBuy {
+		asset = market.QuoteAsset
+		amount = price * qty
+	} else {
+		asset = market.BaseAsset
+		amount = qty
+	}
+
+	var wallet models.Wallets
+	if err := tx.
+		Where("user_id = ? AND asset = ?", userID, asset).
+		First(&wallet).Error; err != nil {
+
+		return fmt.Errorf("wallet %s not found", asset)
+	}
+
+	if wallet.Available < amount {
+		return fmt.Errorf("insufficient available balance")
+	}
+
+	return tx.Model(&wallet).Updates(map[string]interface{}{
+		"available": wallet.Available - amount,
+		"locked":    wallet.Locked + amount,
+	}).Error
+}
+
+func createOrderEntity(tx *gorm.DB, userID int, input models.OrderRequest, side models.SideType) (*models.Order, error) {
+	order := models.Order{
+		UserID:    userID,
+		MarketID:  input.MarketID,
+		Side:      side,
+		Price:     input.Price,
+		Quantity:  input.Quantity,
+		FilledQty: 0,
+		Status:    models.OrderStatusOpen,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := tx.Create(&order).Error; err != nil {
+		return nil, err
+	}
+
+	return &order, nil
 }
 
 func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Market) error {
