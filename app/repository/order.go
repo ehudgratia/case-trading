@@ -194,17 +194,11 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Mar
 	// ================= SETTLEMENT =================
 	if order.Side == models.SideBuy {
 		// BUY (order) vs SELL (counter)
-		if err := s.settleTrade(tx, *order, counter, tradePrice, matchQty, market); err != nil {
-			return err
-		}
-	} else {
-		// SELL (order) vs BUY (counter)
-		if err := s.settleTrade(tx, counter, *order, tradePrice, matchQty, market); err != nil {
-			return err
-		}
+		return s.settleTrade(
+			tx, *order, counter, tradePrice, matchQty, market,
+		)
 	}
-
-	return nil
+	return s.settleTrade(tx, counter, *order, tradePrice, matchQty, market)
 }
 
 func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder models.Order, price float64, qty float64, market models.Market) error {
