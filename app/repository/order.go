@@ -97,37 +97,6 @@ func getActiveMarket(tx *gorm.DB, marketID int) (models.Market, error) {
 	return market, nil
 }
 
-// func lockWalletForOrder(tx *gorm.DB, userID int, side models.SideType, market models.Market, price, qty float64) error {
-
-// 	var asset string
-// 	var amount float64
-
-// 	if side == models.SideBuy {
-// 		asset = market.QuoteAsset
-// 		amount = price * qty
-// 	} else {
-// 		asset = market.BaseAsset
-// 		amount = qty
-// 	}
-
-// 	var wallet models.Wallets
-// 	if err := tx.
-// 		Where("user_id = ? AND asset = ?", userID, asset).
-// 		First(&wallet).Error; err != nil {
-
-// 		return fmt.Errorf("wallet %s not found", asset)
-// 	}
-
-// 	if wallet.Available < amount {
-// 		return fmt.Errorf("insufficient available balance")
-// 	}
-
-// 	return tx.Model(&wallet).Updates(map[string]interface{}{
-// 		"available": wallet.Available - amount,
-// 		"locked":    wallet.Locked + amount,
-// 	}).Error
-// }
-
 func lockWalletForOrder(tx *gorm.DB, userID int, side models.SideType, market models.Market, price, qty float64) error {
 
 	var asset string
@@ -246,37 +215,6 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Mar
 	}
 	return s.settleTrade(tx, counter, *order, tradePrice, matchQty, market)
 }
-
-// func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder models.Order, price float64, qty float64, market models.Market) error {
-
-// 	quoteAmount := price * qty
-
-// 	// ===== BUYER =====
-// 	var buyerQuote, buyerBase models.Wallets
-// 	tx.Where("user_id = ? AND asset = ?", buyOrder.UserID, market.QuoteAsset).First(&buyerQuote)
-// 	tx.Where("user_id = ? AND asset = ?", buyOrder.UserID, market.BaseAsset).First(&buyerBase)
-
-// 	tx.Model(&buyerQuote).Updates(map[string]interface{}{
-// 		"locked": buyerQuote.Locked - quoteAmount,
-// 	})
-// 	tx.Model(&buyerBase).Updates(map[string]interface{}{
-// 		"available": buyerBase.Available + qty,
-// 	})
-
-// 	// ===== SELLER =====
-// 	var sellerBase, sellerQuote models.Wallets
-// 	tx.Where("user_id = ? AND asset = ?", sellOrder.UserID, market.BaseAsset).First(&sellerBase)
-// 	tx.Where("user_id = ? AND asset = ?", sellOrder.UserID, market.QuoteAsset).First(&sellerQuote)
-
-// 	tx.Model(&sellerBase).Updates(map[string]interface{}{
-// 		"locked": sellerBase.Locked - qty,
-// 	})
-// 	tx.Model(&sellerQuote).Updates(map[string]interface{}{
-// 		"available": sellerQuote.Available + quoteAmount,
-// 	})
-
-// 	return nil
-// }
 
 func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder models.Order, price, qty float64, market models.Market) error {
 
