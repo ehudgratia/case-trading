@@ -18,6 +18,7 @@ func SetupRouters(api fiber.Router) {
 
 		// get market
 		public.Get("/", controllers.GetMarkets)
+		public.Get("/market", controllers.GetMarketsCoin)
 	}
 
 	auth := api.Group("/auth", middlewares.AuthMiddleware())
