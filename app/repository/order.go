@@ -246,6 +246,12 @@ func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder mode
 	tx.Model(sellerBase).Update("locked", sellerBase.Locked-qty)
 	tx.Model(sellerQuote).Update("available", sellerQuote.Available+quoteAmount)
 
+	if err := tx.Model(&models.Market{}).
+		Where("id = ?", market.ID).
+		Update("last_price", price).Error; err != nil {
+		return err
+	}
+
 	return nil
 }
 
