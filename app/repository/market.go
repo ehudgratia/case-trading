@@ -33,6 +33,7 @@ func (s *Service) AddMarket(ctx context.Context, input models.AddMarket) (*model
 	market := models.Market{
 		BaseAsset:  base,
 		QuoteAsset: quote,
+		LastPrice:  0,
 		IsActive:   true,
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -44,10 +45,9 @@ func (s *Service) AddMarket(ctx context.Context, input models.AddMarket) (*model
 	resp := &models.MarketData{
 		ID:         market.ID,
 		BaseAsset:  market.BaseAsset,
+		LastPrice:  market.LastPrice,
 		QuoteAsset: market.QuoteAsset,
 		IsActive:   market.IsActive,
-		CreatedAt:  market.CreatedAt,
-		UpdatedAt:  market.UpdatedAt,
 	}
 
 	return resp, nil
@@ -69,9 +69,8 @@ func (s *Service) GetMarkets(ctx context.Context) ([]models.MarketData, error) {
 			ID:         m.ID,
 			BaseAsset:  m.BaseAsset,
 			QuoteAsset: m.QuoteAsset,
+			LastPrice:  m.LastPrice,
 			IsActive:   m.IsActive,
-			CreatedAt:  m.CreatedAt,
-			UpdatedAt:  m.UpdatedAt,
 		})
 	}
 
