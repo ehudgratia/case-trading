@@ -14,18 +14,23 @@ const (
 	CG_API_KEY  = "CG-XJbdP6jjgk9N9eZLjxNgXaG6"
 )
 
-// Ambil data harga dari CoinGecko
-func (s *Service) GetLiveMarketPrice(ctx context.Context, coinIDs string) (models.CoinGeckoPriceResponse, error) {
+type MarketRepository struct{}
+
+func NewMarketRepository() *MarketRepository {
+	return &MarketRepository{}
+}
+
+func (r *MarketRepository) GetLivePrice(ctx context.Context, ids string) (models.CoinGeckoPriceResponse, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	url := fmt.Sprintf("%s/simple/price?ids=%s&vs_currencies=usd", CG_BASE_URL, coinIDs)
+	// Gunakan endpoint simple/price
+	url := fmt.Sprintf("%s/simple/price?ids=%s&vs_currencies=usd", CG_BASE_URL, ids)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Setup Header Authentication
 	req.Header.Set("x-cg-demo-api-key", CG_API_KEY)
 	req.Header.Set("accept", "application/json")
 
@@ -36,7 +41,7 @@ func (s *Service) GetLiveMarketPrice(ctx context.Context, coinIDs string) (model
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("coingecko api error: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("coingecko error: status %d", resp.StatusCode)
 	}
 
 	var result models.CoinGeckoPriceResponse

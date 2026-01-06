@@ -7,26 +7,22 @@ import (
 )
 
 func GetMarketsCoin(ctx *fiber.Ctx) error {
-	// Ambil query param 'ids', default: bitcoin
+	// Ambil query param 'ids', jika kosong gunakan default
 	coinIDs := ctx.Query("ids", "bitcoin,ethereum,solana")
 
-	s := repository.GetTransaction()
+	repo := repository.NewMarketRepository()
+	data, err := repo.GetLivePrice(ctx.Context(), coinIDs)
 
-	// Kita tidak butuh Begin/Commit untuk hit API luar,
-	// tapi tetap ikuti pola strukturmu jika ingin konsisten.
-
-	data, err := s.GetLiveMarketPrice(ctx.Context(), coinIDs)
 	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		return ctx.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Failed to fetch market data",
-			"details": err.Error(),
+			"message": "Gagal mengambil data dari CoinGecko",
+			"error":   err.Error(),
 		})
 	}
 
-	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+	return ctx.JSON(fiber.Map{
 		"success": true,
-		"message": "Market data fetched successfully",
 		"data":    data,
 	})
 }
