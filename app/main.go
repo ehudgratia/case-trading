@@ -2,6 +2,7 @@ package main
 
 import (
 	"case-trading/app/helper/database"
+	"case-trading/app/helper/redis"
 	"case-trading/app/routes"
 	"log"
 	"os"
@@ -13,6 +14,9 @@ import (
 func main() {
 	database.InitDB()
 	database.SyncDB()
+	if err := redis.InitRedis(); err != nil {
+		log.Fatal("Redis connection failed:", err)
+	}
 
 	app := fiber.New()
 	app.Use(logger.New())
