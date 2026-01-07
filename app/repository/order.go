@@ -186,7 +186,7 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Mar
 		}
 	}
 
-	// ================= FULL MATCH (PHASE 2) =================
+	// FULL MATCH (PHASE 2)
 	matchQty := order.Quantity
 	tradePrice := counter.Price
 
@@ -206,14 +206,20 @@ func (s *Service) MatchOrder(tx *gorm.DB, order *models.Order, market models.Mar
 		return err
 	}
 
-	// ================= SETTLEMENT =================
+	// SETTLEMENT
 	if order.Side == models.SideBuy {
 		// BUY (order) vs SELL (counter)
-		return s.settleTrade(
-			tx, *order, counter, tradePrice, matchQty, market,
-		)
+		if err := s.settleTrade(tx, *order, counter, tradePrice, matchQty, market); err != nil {
+			return err
+		}
+		return createTradeLog(tx, market.ID, *order, counter, tradePrice, matchQty)
 	}
-	return s.settleTrade(tx, counter, *order, tradePrice, matchQty, market)
+
+	if err := s.settleTrade(tx, counter, *order, tradePrice, matchQty, market); err != nil {
+		return err
+	}
+	return createTradeLog(tx, market.ID, *order, counter, tradePrice, matchQty)
+
 }
 
 func (s *Service) settleTrade(tx *gorm.DB, buyOrder models.Order, sellOrder models.Order, price, qty float64, market models.Market) error {

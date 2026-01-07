@@ -8,10 +8,8 @@ const (
 	SideBuy  SideType = "BUY"
 	SideSell SideType = "SELL"
 
-	OrderStatusOpen     = "OPEN"
-	OrderStatusPartial  = "PARTIAL"
-	OrderStatusFilled   = "FILLED"
-	OrderStatusCanceled = "CANCELED"
+	OrderStatusOpen   = "OPEN"
+	OrderStatusFilled = "FILLED"
 )
 
 type Order struct {

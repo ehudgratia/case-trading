@@ -31,5 +31,8 @@ func SetupRouters(api fiber.Router) {
 
 		// order
 		auth.Post("/order", controllers.CreateOrder)
+
+		//order log
+		auth.Get("/orderlog", controllers.GetMarketTrades)
 	}
 }
