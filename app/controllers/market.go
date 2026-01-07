@@ -16,29 +16,11 @@ func AddMarket(ctx *fiber.Ctx) error {
 		})
 	}
 
-	s := repository.GetTransaction()
-	defer func() {
-		if r := recover(); r != nil {
-			err := s.Rollback(r)
-			ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"success": false,
-				"message": err.Error(),
-			})
-		}
-	}()
+	s := repository.GetService()
 
 	market, err := s.AddMarket(ctx.Context(), input)
 	if err != nil {
-		s.Rollback(err)
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"success": false,
-			"message": err.Error(),
-		})
-	}
-
-	if err := s.Commit(); err != nil {
-		s.Rollback(err)
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"message": err.Error(),
 		})

@@ -17,7 +17,6 @@ func SetupRouters(api fiber.Router) {
 		public.Post("/login", controllers.UserLogin)
 
 		// get market
-		public.Get("/market", controllers.GetMarketsCoin)
 		public.Get("/", controllers.GetMarkets)
 	}
 
