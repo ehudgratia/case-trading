@@ -28,7 +28,6 @@ func InitRedis() error {
 		Addr:     addr,
 		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       db,
-		Protocol: 2,
 	})
 
 	// Test connection
