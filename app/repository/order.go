@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"case-trading/app/helper/redis"
 	"case-trading/app/models"
 	"context"
 	"fmt"
@@ -16,6 +17,15 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 	if err != nil {
 		return nil, err
 	}
+
+	locked, err := redis.AcquireMarketLock(input.MarketID, 3*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	if !locked {
+		return nil, fmt.Errorf("market is busy, please try again")
+	}
+	defer redis.ReleaseMarketLock(input.MarketID)
 
 	tx := s.DB.WithContext(ctx).Begin()
 	if tx.Error != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -36,4 +37,15 @@ func InitRedis() error {
 	}
 
 	return nil
+}
+
+func AcquireMarketLock(marketID int, ttl time.Duration) (bool, error) {
+	key := fmt.Sprintf("lock:market:%d", marketID)
+	ok, err := RDB.SetNX(Ctx, key, "1", ttl).Result()
+	return ok, err
+}
+
+func ReleaseMarketLock(marketID int) error {
+	key := fmt.Sprintf("lock:market:%d", marketID)
+	return RDB.Del(Ctx, key).Err()
 }
