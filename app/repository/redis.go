@@ -102,31 +102,52 @@ func (s *Service) MatchOrderInRedis(tx *gorm.DB, order *models.Order, market mod
 	sellsKey := fmt.Sprintf("orderbook:%d:sells", order.MarketID)
 
 	keys := []string{buysKey, sellsKey}
-	args := []interface{}{strconv.Itoa(order.ID), string(order.Side), fmt.Sprintf("%f", order.Price), fmt.Sprintf("%f", order.Quantity)}
-
-	result, err := script.Run(config.Ctx, config.RDB, keys, args...).Result()
-	if err != nil {
-		return nil, err
-	}
-	scriptResult, ok := result.(string)
-	if !ok {
-		return nil, fmt.Errorf("expected string result from lua script, got %T", result)
+	args := []interface{}{
+		strconv.Itoa(order.ID),
+		string(order.Side),
+		fmt.Sprintf("%f", order.Price),
+		fmt.Sprintf("%f", order.Quantity),
 	}
 
+	cmd := script.Run(config.Ctx, config.RDB, keys, args...)
+
+	if cmd.Err() != nil {
+		return nil, fmt.Errorf("failed to execute matching script: %w", cmd.Err())
+	}
+
+	jsonStr := cmd.String()
+	// Penanganan hasil JSON
 	var matches []models.MatchResult
-	if err := json.Unmarshal([]byte(scriptResult), &matches); err != nil {
-		return nil, err
+
+	if jsonStr == "{}" || jsonStr == "" || jsonStr == "[]" {
+		// Case kosong: tidak ada match
+		if err := s.syncOrderFromRedis(order); err != nil {
+			return nil, err
+		}
+		return []models.MatchResult{}, nil
 	}
 
-	// Update order filled_qty from Redis
+	// Case 2: Coba parse sebagai array
+	if err := json.Unmarshal([]byte(jsonStr), &matches); err != nil {
+		return nil, fmt.Errorf("invalid json from matching script: %s (parse error: %w)", jsonStr, err)
+	}
+
+	if err := s.syncOrderFromRedis(order); err != nil {
+		return nil, err
+	}
+	return matches, nil
+}
+
+// Helper kecil agar kode lebih rapi
+func (s *Service) syncOrderFromRedis(order *models.Order) error {
 	redisOrder, err := getRedisOrder(order.ID)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to sync order from redis: %w", err)
 	}
+
 	order.FilledQty = redisOrder.FilledQty
 	order.Status = redisOrder.Status
-
-	return matches, nil
+	return nil
 }
 
 func addToRedisOrderbook(order *models.Order) error {
