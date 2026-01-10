@@ -95,12 +95,6 @@ func (s *Service) MatchOrderInRedis(tx *gorm.DB, order *models.Order, market mod
 			end
 		end
 
-		if side == 'BUY' then
-			match_buy()
-		else
-			match_sell()
-		end
-
 		return cjson.encode(matches)
 	`)
 
