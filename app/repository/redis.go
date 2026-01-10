@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Service) MatchOrderInRedis(tx *gorm.DB, order *models.Order, market models.Market) ([]models.MatchResult, error) {
-	scriptContent, err := os.ReadFile(`C:\Users\PC-\go\src\case-trading\app\helper\scripts\matching.lua`)
+	scriptContent, err := os.ReadFile("app/helper/scripts/matching.lua")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read lua script file: %w", err)
 	}
