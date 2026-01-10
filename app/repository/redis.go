@@ -6,97 +6,93 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 func (s *Service) MatchOrderInRedis(tx *gorm.DB, order *models.Order, market models.Market) ([]models.MatchResult, error) {
-
 	script := redis.NewScript(`
-		local buys_key = KEYS[1]
-		local sells_key = KEYS[2]
-		local order_id = ARGV[1]
-		local side = ARGV[2]
-		local price = tonumber(ARGV[3])
-		local remaining_qty = tonumber(ARGV[4])
+        local buys_key = KEYS[1]
+        local sells_key = KEYS[2]
+        local order_id = ARGV[1]
+        local side = ARGV[2]
+        local price = tonumber(ARGV[3])
+        local remaining_qty = tonumber(ARGV[4])
 
-		local matches = {}
+        local matches = {}
 
-		-- Helper untuk skip order yang sudah habis
-		local function process_counter(counter_id, counter_price, zset_key)
-			local counter_hash = redis.call('HGETALL', 'order:' .. counter_id)
-			local counter = {}
-			for j=1, #counter_hash, 2 do
-				counter[counter_hash[j]] = counter_hash[j+1]
-			end
+        local function process_counter(counter_id, counter_price, zset_key)
+            local counter_hash = redis.call('HGETALL', 'order:' .. counter_id)
+            local counter = {}
+            for j=1, #counter_hash, 2 do
+                counter[counter_hash[j]] = counter_hash[j+1]
+            end
 
-			local counter_remaining = tonumber(counter.quantity or 0) - tonumber(counter.filled_qty or 0)
-			if counter_remaining <= 0 then
-				redis.call('ZREM', zset_key, counter_id)
-				return 0  -- skip
-			end
+            local counter_remaining = tonumber(counter.quantity or 0) - tonumber(counter.filled_qty or 0)
+            if counter_remaining <= 0 then
+                redis.call('ZREM', zset_key, counter_id)
+                return 0
+            end
 
-			local match_qty = math.min(remaining_qty, counter_remaining)
+            local match_qty = math.min(remaining_qty, counter_remaining)
 
-			-- Update filled qty
-			redis.call('HINCRBYFLOAT', 'order:' .. order_id, 'filled_qty', match_qty)
-			redis.call('HINCRBYFLOAT', 'order:' .. counter_id, 'filled_qty', match_qty)
+            redis.call('HINCRBYFLOAT', 'order:' .. order_id, 'filled_qty', match_qty)
+            redis.call('HINCRBYFLOAT', 'order:' .. counter_id, 'filled_qty', match_qty)
 
-			-- Update remaining counter
-			counter_remaining = counter_remaining - match_qty
+            counter_remaining = counter_remaining - match_qty
 
-			if counter_remaining <= 0 then
-				redis.call('ZREM', zset_key, counter_id)
-				redis.call('HSET', 'order:' .. counter_id, 'status', 'FILLED')
-			end
+            if counter_remaining <= 0 then
+                redis.call('ZREM', zset_key, counter_id)
+                redis.call('HSET', 'order:' .. counter_id, 'status', 'FILLED')
+            end
 
-			-- Record match
-			table.insert(matches, {tonumber(counter_id), counter_price, match_qty})
+            table.insert(matches, {tonumber(counter_id), counter_price, match_qty})
 
-			remaining_qty = remaining_qty - match_qty
+            remaining_qty = remaining_qty - match_qty
 
-			return match_qty
-		end
+            return match_qty
+        end
 
-		if side == 'BUY' then
-			local sells = redis.call('ZRANGE', sells_key, 0, -1, 'WITHSCORES')
-			for i = 1, #sells, 2 do
-				local counter_id = tonumber(sells[i])
-				local counter_price = tonumber(sells[i+1])
+        if side == 'BUY' then
+            local sells = redis.call('ZRANGE', sells_key, 0, -1, 'WITHSCORES')
+            for i = 1, #sells, 2 do
+                local counter_id = tonumber(sells[i])
+                local counter_price = tonumber(sells[i+1])
 
-				if counter_price > price then
-					break
-				end
+                if counter_price > price then
+                    break
+                end
 
-				local matched = process_counter(counter_id, counter_price, sells_key)
-				if matched > 0 and remaining_qty <= 0 then
-					redis.call('ZREM', buys_key, order_id)
-					redis.call('HSET', 'order:' .. order_id, 'status', 'FILLED')
-					break
-				end
-			end
-		else  -- SELL
-			local buys = redis.call('ZREVRANGE', buys_key, 0, -1, 'WITHSCORES')
-			for i = 1, #buys, 2 do
-				local counter_id = tonumber(buys[i])
-				local counter_price = tonumber(buys[i+1]) * -1   -- karena score buy adalah -price
+                local matched = process_counter(counter_id, counter_price, sells_key)
+                if matched > 0 and remaining_qty <= 0 then
+                    redis.call('ZREM', buys_key, order_id)
+                    redis.call('HSET', 'order:' .. order_id, 'status', 'FILLED')
+                    break
+                end
+            end
+        else
+            local buys = redis.call('ZREVRANGE', buys_key, 0, -1, 'WITHSCORES')
+            for i = 1, #buys, 2 do
+                local counter_id = tonumber(buys[i])
+                local counter_price = tonumber(buys[i+1]) * -1
 
-				if counter_price < price then
-					break
-				end
+                if counter_price < price then
+                    break
+                end
 
-				local matched = process_counter(counter_id, counter_price, buys_key)
-				if matched > 0 and remaining_qty <= 0 then
-					redis.call('ZREM', sells_key, order_id)
-					redis.call('HSET', 'order:' .. order_id, 'status', 'FILLED')
-					break
-				end
-			end
-		end
+                local matched = process_counter(counter_id, counter_price, buys_key)
+                if matched > 0 and remaining_qty <= 0 then
+                    redis.call('ZREM', sells_key, order_id)
+                    redis.call('HSET', 'order:' .. order_id, 'status', 'FILLED')
+                    break
+                end
+            end
+        end
 
-		return cjson.encode(matches)
-	`)
+        return cjson.encode(matches)
+    `)
 
 	buysKey := fmt.Sprintf("orderbook:%d:buys", order.MarketID)
 	sellsKey := fmt.Sprintf("orderbook:%d:sells", order.MarketID)
@@ -105,36 +101,51 @@ func (s *Service) MatchOrderInRedis(tx *gorm.DB, order *models.Order, market mod
 	args := []interface{}{
 		strconv.Itoa(order.ID),
 		string(order.Side),
-		fmt.Sprintf("%f", order.Price),
-		fmt.Sprintf("%f", order.Quantity),
+		fmt.Sprintf("%.8f", order.Price), // lebih presisi
+		fmt.Sprintf("%.8f", order.Quantity),
 	}
 
+	// 1. Jalankan script
 	cmd := script.Run(config.Ctx, config.RDB, keys, args...)
 
+	// 2. Cek error eksekusi terlebih dahulu
 	if cmd.Err() != nil {
-		return nil, fmt.Errorf("failed to execute matching script: %w", cmd.Err())
+		// Ini menangkap error kompilasi, koneksi, dll
+		return nil, fmt.Errorf("failed to execute lua script: %w", cmd.Err())
 	}
 
+	// 3. Ambil hasil
 	jsonStr := cmd.String()
-	// Penanganan hasil JSON
+
+	// 4. Debugging sederhana (hapus setelah OK)
+	// fmt.Printf("Raw Lua result: %q\n", jsonStr)
+
+	// 5. Cek apakah hasilnya terlihat seperti pesan error Redis
+	if strings.Contains(jsonStr, "ERR ") || strings.Contains(jsonStr, "Error compiling script") || strings.HasPrefix(jsonStr, "eval ") {
+		return nil, fmt.Errorf("lua script failed to compile or execute: %s", jsonStr)
+	}
+
+	// 6. Penanganan hasil normal
 	var matches []models.MatchResult
 
+	// Kosong = tidak ada match
 	if jsonStr == "{}" || jsonStr == "" || jsonStr == "[]" {
-		// Case kosong: tidak ada match
 		if err := s.syncOrderFromRedis(order); err != nil {
 			return nil, err
 		}
 		return []models.MatchResult{}, nil
 	}
 
-	// Case 2: Coba parse sebagai array
+	// Coba parse sebagai array
 	if err := json.Unmarshal([]byte(jsonStr), &matches); err != nil {
-		return nil, fmt.Errorf("invalid json from matching script: %s (parse error: %w)", jsonStr, err)
+		return nil, fmt.Errorf("invalid json from lua: %s (parse error: %w)", jsonStr, err)
 	}
 
+	// Sukses → sync order
 	if err := s.syncOrderFromRedis(order); err != nil {
 		return nil, err
 	}
+
 	return matches, nil
 }
 
