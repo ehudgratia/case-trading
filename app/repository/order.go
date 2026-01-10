@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"case-trading/app/helper/redis"
+	"case-trading/app/helper/config"
 	"case-trading/app/models"
 	"context"
 	"fmt"
@@ -18,14 +18,14 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	locked, err := redis.AcquireMarketLock(input.MarketID, 3*time.Second)
+	locked, err := config.AcquireMarketLock(input.MarketID, 3*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	if !locked {
 		return nil, fmt.Errorf("market is busy, please try again")
 	}
-	defer redis.ReleaseMarketLock(input.MarketID)
+	defer config.ReleaseMarketLock(input.MarketID)
 
 	tx := s.DB.WithContext(ctx).Begin()
 	if tx.Error != nil {
@@ -54,9 +54,63 @@ func (s *Service) CreateOrder(ctx context.Context, userID int, input models.Orde
 		return nil, err
 	}
 
-	if err := s.MatchOrder(tx, order, market); err != nil {
+	if err := addToRedisOrderbook(order); err != nil {
 		tx.Rollback()
 		return nil, err
+	}
+
+	matches, err := s.MatchOrderInRedis(tx, order, market)
+	if err != nil {
+		removeFromRedisOrderbook(order.ID, string(order.Side), market.ID)
+		tx.Rollback()
+		return nil, err
+	}
+
+	for _, match := range matches {
+		var buyOrder, sellOrder models.Order
+		if order.Side == models.SideBuy {
+			buyOrder = *order
+			if err := tx.First(&sellOrder, match.CounterID).Error; err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+		} else {
+			sellOrder = *order
+			if err := tx.First(&buyOrder, match.CounterID).Error; err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+		}
+
+		if err := s.settleTrade(tx, buyOrder, sellOrder, match.Price, match.Quantity, market); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+
+		if err := createTradeLog(tx, market.ID, buyOrder, sellOrder, match.Price, match.Quantity); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
+
+	if err := tx.First(order, order.ID).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if order.FilledQty == order.Quantity {
+		order.Status = models.OrderStatusFilled
+	}
+	if err := tx.Save(order).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// If fully filled, remove from Redis
+	if order.Status == models.OrderStatusFilled {
+		removeFromRedisOrderbook(order.ID, string(order.Side), market.ID)
+	} else {
+		// Update remaining in Redis
+		updateRedisOrder(order)
 	}
 
 	if err := tx.Commit().Error; err != nil {

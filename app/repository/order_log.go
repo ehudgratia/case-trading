@@ -10,7 +10,7 @@ import (
 
 func createTradeLog(tx *gorm.DB, marketID int, buyOrder models.Order, sellOrder models.Order, price, qty float64) error {
 
-	trade := models.OrderTrade{
+	trade := models.Trade{
 		MarketID:    marketID,
 		BuyOrderID:  buyOrder.ID,
 		SellOrderID: sellOrder.ID,
@@ -25,13 +25,13 @@ func createTradeLog(tx *gorm.DB, marketID int, buyOrder models.Order, sellOrder 
 	return tx.Create(&trade).Error
 }
 
-func (s *Service) GetMarketTrades(ctx context.Context, marketID int, limit int) ([]models.OrderTrade, error) {
+func (s *Service) GetMarketTrades(ctx context.Context, marketID int, limit int) ([]models.Trade, error) {
 
 	if limit <= 0 {
 		limit = 50
 	}
 
-	var trades []models.OrderTrade
+	var trades []models.Trade
 	err := s.DB.WithContext(ctx).
 		Where("market_id = ?", marketID).
 		Order("created_at DESC").
