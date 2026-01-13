@@ -50,7 +50,9 @@ jobs:
         method: oidc
         identity-id: d5d319fc-b156-4a0f-a5f4-9699b4164884   
         env-slug: dev                                      
-        project-slug: ci-github-az-nd                                                            
+        project-slug: ci-github-az-nd
+        domain: https://app.infisical.com
+        # oidc-audience: https://github.com                                                            
 
     - name: Show fetched secrets (debug only - remove later)
       run: |
