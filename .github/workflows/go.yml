@@ -42,6 +42,20 @@ jobs:
 
         echo "Decoded Claims:"
         echo "$PAYLOAD"
+
+    - name: Fetch secrets from Infisical via OIDC
+      id: infisical
+      uses: Infisical/secrets-action@v1.0.9
+      with:
+        method: oidc
+        identity-id: d5d319fc-b156-4a0f-a5f4-9699b4164884   
+        env-slug: dev                                      
+        project-slug: ci-github-az-nd                                                            
+
+    - name: Show fetched secrets (debug only - remove later)
+      run: |
+        echo "DOCKER_USERNAME: ${{ steps.infisical.outputs.DOCKERHUB_USERNAME }}"
+        echo "DOCKER_TOKEN:    ${{ steps.infisical.outputs.DOCKERHUB_TOKEN || 'Not found' }}"
   
   # deploy:
   #   name: Deploy to VPS
