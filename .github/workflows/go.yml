@@ -32,8 +32,8 @@ jobs:
 
     - name: Install Infisical CLI
       run: |
-        curl -1sLf 'https://dl.cloudsmith.io/public/infisical/cli/setup.deb.sh' | sudo -E bash
-        sudo apt-get install -y infisical
+        curl -1sLf 'https://artifacts-cli.infisical.com/setup.deb.sh' | sudo -E bash
+        sudo apt-get update && sudo apt-get install -y infisical
     - name: Login & Pull secrets from Infisical
       env:
         INFISICAL_TOKEN: ${{ secrets.INFISICAL_SERVICE_TOKEN }}   
