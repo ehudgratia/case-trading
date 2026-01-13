@@ -57,7 +57,7 @@ jobs:
     - name: Show fetched secrets (debug only - remove later)
       run: |
         echo "DOCKERHUB_USERNAME: ${{ steps.infisical.outputs.DOCKERHUB_USERNAME }}"
-        echo "DOCKERHUB_TOKEN:    ${{ steps.infisical.outputs.DOCKERHUB_TOKEN || 'Not found' }}"
+        echo "DOCKERHUB_TOKEN:    ${{ steps.infisical.outputs.DOCKERHUB_TOKEN }}"
   
   # deploy:
   #   name: Deploy to VPS
