@@ -52,7 +52,7 @@ jobs:
         env-slug: dev                                      
         project-slug: ci-github-az-nd
         domain: https://app.infisical.com
-        # oidc-audience: https://github.com                                                            
+        oidc-audience: https://github.com                                                            
 
     - name: Show fetched secrets (debug only - remove later)
       run: |
