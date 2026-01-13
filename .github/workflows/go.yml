@@ -19,15 +19,29 @@ jobs:
     - name: Debug GitHub OIDC Token Claims
       id: debug-oidc
       run: |
-        echo "Fetching OIDC token..."
-        TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-          "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://github.com/Ehud/case-trading" | jq -r .value)
-          
-        echo "JWT Token (partial): ${TOKEN:0:50}..."  # Hanya tampil partial biar aman
-          
-        echo "Decoding claims..."
-        # Decode JWT header & payload (tanpa verifikasi signature, hanya lihat isi)
-        echo $TOKEN | jq -R 'split(".") | .[1] | @base64d | fromjson' || echo "Error decoding"
+        echo "Requesting OIDC token with default audience..."
+        TOKEN_RESPONSE=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://github.com")
+
+        echo "Full response (partial): ${TOKEN_RESPONSE:0:200}..."
+
+        # Extract token value
+        TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .value 2>/dev/null || echo "null")
+
+        if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+          echo "Error: No token received. Check permissions: id-token: write"
+          echo "Response was: $TOKEN_RESPONSE"
+          exit 1
+        fi
+
+        echo "JWT Token (partial): ${TOKEN:0:50}..."
+
+        echo "Decoding payload claims..."
+        # Decode payload (base64url decode bagian tengah JWT)
+        PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f 2 | base64 -d 2>/dev/null | jq . || echo "Decode failed")
+
+        echo "Decoded Claims:"
+        echo "$PAYLOAD"
   
   # deploy:
   #   name: Deploy to VPS
