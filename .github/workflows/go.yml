@@ -71,7 +71,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ env.DOCKERHUB_USERNAME }} /case-trading:latest
+        tags: ${{ env.DOCKERHUB_USERNAME }}/case-trading:latest
   
   # deploy:
   #   name: Deploy to VPS
